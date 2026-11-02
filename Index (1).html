@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Finance Tracker</title>
+<style>
+:root{--bg:#f6f4ef;--card:#ffffff;--ink:#222222;--muted:#666666;--line:#dddddd;
+--green:#2e7d32;--amber:#b7791f;--red:#c62828;--accent:#31587c;--input-bg:#ffffff}
+body.dark{--bg:#17191c;--card:#22252a;--ink:#e8e8e8;--muted:#aaaaaa;--line:#3a3e44;--input-bg:#2a2e34}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:720px;margin:0 auto;padding:12px 12px 40px}
+h1{font-size:22px;margin:4px 0}
+h2{font-size:18px;margin:20px 0 8px}
+h3{font-size:15px;margin:16px 0 6px;color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+input,select,button{font-size:16px;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--input-bg);color:var(--ink)}
+input[type="month"]{flex:1}
+button{background:var(--accent);color:#fff;border:none;min-height:44px;cursor:pointer}
+button.secondary{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+button.danger{background:var(--red)}
+button:disabled{opacity:.5}
+label{font-size:14px;color:var(--muted)}
+.field{flex:1 1 140px;display:flex;flex-direction:column;gap:4px}
+.field input,.field select{width:100%}
+.tabs{display:flex;gap:6px;overflow-x:auto;padding:4px 0}
+.tabs button{background:transparent;color:var(--ink);border:1px solid var(--line);white-space:nowrap}
+.tabs button.on{background:var(--accent);color:#fff}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+.stat .lbl{font-size:13px;color:var(--muted)}
+.stat .val{font-size:20px;font-weight:700;margin-top:2px}
+.stat .sub{font-size:13px;color:var(--muted)}
+.brow{display:flex;justify-content:space-between;gap:8px;font-size:15px}
+.brow .amt{white-space:nowrap}
+.bar{height:10px;background:var(--line);border-radius:6px;overflow:hidden;margin:6px 0}
+.bar i{display:block;height:100%}
+.bar .ok{background:var(--green)} .bar .near{background:var(--amber)} .bar .over{background:var(--red)}
+.txrow{display:flex;justify-content:space-between;gap:8px;padding:10px 0;border-top:1px solid var(--line);cursor:pointer}
+.txrow .meta{font-size:13px;color:var(--muted)}
+.neg{color:var(--red)} .pos{color:var(--green)}
+#pinGate{position:fixed;inset:0;background:var(--bg);z-index:50;display:flex;align-items:center;justify-content:center;padding:20px}
+#pinGate .box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px;width:100%;max-width:360px;text-align:center}
+#pinGate input{font-size:24px;letter-spacing:8px;text-align:center;width:100%}
+#msg{position:fixed;left:12px;right:12px;bottom:12px;background:#222;color:#fff;padding:12px;border-radius:10px;display:none;z-index:60;text-align:center}
+.small{font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div id="pinGate"><div class="box">
+<h1 id="pinTitle">Enter your PIN</h1>
+<p class="small" id="pinSub">4 to 6 digits. This keeps the family budget private on a shared link.</p>
+<input id="pinInput" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••">
+<div style="height:10px"></div>
+<input id="pinInput2" inputmode="numeric" maxlength="6" placeholder="Repeat PIN (first time only)" style="display:none">
+<div style="height:10px"></div>
+<button id="pinBtn" style="width:100%">Unlock</button>
+<p class="small" id="pinErr" style="color:var(--red)"></p>
+</div></div>
+
+<div class="wrap" id="app" style="display:none">
+<div class="row">
+<h1 style="flex:1">Finance Tracker</h1>
+<button id="darkBtn" class="secondary" title="Toggle dark mode">🌙 Dark</button>
+</div>
+
+<div class="card"><div class="row">
+<button id="prevM" class="secondary">◀</button>
+<input type="month" id="monthPick">
+<button id="nextM" class="secondary">▶</button>
+</div></div>
+
+<div class="cards">
+<div class="stat"><div class="lbl">Income received</div><div class="val" id="sInc"></div><div class="sub" id="sIncSub"></div></div>
+<div class="stat"><div class="lbl">Spent</div><div class="val" id="sExp"></div><div class="sub" id="sExpSub"></div></div>
+<div class="stat"><div class="lbl">Left to budget</div><div class="val" id="sLeft"></div><div class="sub">Expected income minus budgeted spending</div></div>
+<div class="stat"><div class="lbl">Net this month</div><div class="val" id="sNet"></div><div class="sub">Income received minus spent</div></div>
+</div>
+
+<div class="tabs" id="tabs">
+<button data-sec="budgets" class="on">Budgets</button>
+<button data-sec="tx">Transactions</button>
+<button data-sec="import">Import CSV</button>
+<button data-sec="accounts">Accounts</button>
+<button data-sec="cats">Categories</button>
+<button data-sec="settings">Settings</button>
+</div>
+
+<div id="sec-budgets">
+<div class="row" style="margin:8px 0">
+<button id="viewM" class="secondary">Monthly</button>
+<button id="viewY" class="secondary">Yearly</button>
+<button id="copyPrev" style="margin-left:auto">Copy last month</button>
+</div>
+<div id="budgetList"></div>
+<div id="yearView" style="display:none"></div>
+</div>
+
+<div id="sec-tx" style="display:none">
+<div class="card"><h2 style="margin-top:0" id="txFormTitle">Add transaction</h2>
+<div class="row">
+<div class="field"><label>Date</label><input type="date" id="txDate"></div>
+<div class="field"><label>Account</label><select id="txAccount"></select></div>
+</div>
+<div class="row" style="margin-top:8px">
+<div class="field"><label>Type</label><select id="txType"><option>Expense</option><option>Income</option></select></div>
+<div class="field"><label>Category</label><select id="txCat"></select></div>
+</div>
+<div class="row" style="margin-top:8px">
+<div class="field"><label>Amount</label><input type="number" id="txAmt" min="0" step="0.01" placeholder="0.00"></div>
+<div class="field"><label>Note</label><input type="text" id="txNote" placeholder="Optional"></div>
+</div>
+<div class="row" style="margin-top:10px">
+<button id="txSave">Add transaction</button>
+<button id="txCancel" class="secondary" style="display:none">Cancel edit</button>
+<button id="txDelete" class="danger" style="display:none">Delete</button>
+</div></div>
+<div class="card"><div class="row">
+<div class="field"><label>Account filter</label><select id="fAccount"></select></div>
+<div class="field"><label>Category filter</label><select id="fCat"></select></div>
+<div class="field"><label>Search</label><input type="text" id="fSearch" placeholder="Note or category"></div>
+</div><div id="txList" style="margin-top:8px"></div></div>
+</div>
+
+<div id="sec-import" style="display:none">
+<div class="card"><h2 style="margin-top:0">Import bank CSV</h2>
+<p class="small">Pick the file your bank exports. We auto-detect the date, description, and amount columns — check the mapping, preview, then import. Exact duplicates are skipped.</p>
+<div class="row"><input type="file" id="csvFile" accept=".csv,text/csv"></div>
+<div class="row" style="margin-top:8px">
+<div class="field"><label>Into account</label><select id="impAccount"></select></div>
+<div class="field"><label>Default category</label><select id="impCat"></select></div>
+</div>
+<div class="row" style="margin-top:8px">
+<div class="field"><label>Date column</label><select id="mapDate"></select></div>
+<div class="field"><label>Description column</label><select id="mapDesc"></select></div>
+<div class="field"><label>Amount column</label><select id="mapAmt"></select></div>
+</div>
+<label style="display:block;margin-top:8px"><input type="checkbox" id="impFlip"> Flip sign (my bank shows spending as positive)</label>
+<div id="impPreview" style="margin-top:10px"></div>
+<div class="row" style="margin-top:10px"><button id="impBtn" disabled>Import</button><span class="small" id="impMsg"></span></div>
+</div></div>
+
+<div id="sec-accounts" style="display:none">
+<div class="card"><h2 style="margin-top:0">Add account</h2>
+<div class="row">
+<div class="field"><label>Name</label><input type="text" id="acName" placeholder="e.g. Checking"></div>
+<div class="field"><label>Starting balance</label><input type="number" id="acStart" step="0.01" placeholder="0.00"></div>
+</div>
+<div class="row" style="margin-top:10px"><button id="acAdd">Add account</button></div></div>
+<div id="acList"></div>
+</div>
+
+<div id="sec-cats" style="display:none">
+<div class="card"><h2 style="margin-top:0" id="catFormTitle">Add category</h2>
+<div class="row">
+<div class="field"><label>Name</label><input type="text" id="catName" placeholder="e.g. Groceries or Auto:Fuel"></div>
+<div class="field"><label>Type</label><select id="catType"><option>Expense</option><option>Income</option></select></div>
+</div>
+<div class="row" style="margin-top:10px">
+<button id="catSave">Add category</button>
+<button id="catCancel" class="secondary" style="display:none">Cancel edit</button>
+</div>
+<p class="small">Tip: use Parent:Child names (Auto:Fuel, Medical:Doctor) to group budgets. Renaming a category updates its transactions and budgets too.</p>
+</div>
+<div id="catList"></div>
+</div>
+
+<div id="sec-settings" style="display:none">
+<div class="card"><h2 style="margin-top:0">Change PIN</h2>
+<div class="row">
+<div class="field"><label>Current PIN</label><input id="pinOld" inputmode="numeric" maxlength="6"></div>
+<div class="field"><label>New PIN</label><input id="pinNew" inputmode="numeric" maxlength="6"></div>
+<div class="field"><label>Repeat new PIN</label><input id="pinNew2" inputmode="numeric" maxlength="6"></div>
+</div>
+<div class="row" style="margin-top:10px"><button id="pinChange">Change PIN</button></div>
+</div>
+<div class="card"><h2 style="margin-top:0">Sharing</h2>
+<p>Send your wife the web app link and the PIN — you both see and edit the same sheet. Keep the link private: anyone with it can open the app, and the PIN is what keeps casual visitors out. It is a household privacy screen, not bank-grade security.</p>
+<p class="small">Dark mode: use the 🌙 button at the top. It remembers your choice on this device.</p>
+</div>
+</div>
+</div>
+<div id="msg"></div>
+<script>
+var S = null, curY = 0, curM = 0, viewMode = 'M';
+var editingTxId = null, editingCat = null, csvParsed = null;
+var DIRECT = ['hasPinStatus', 'checkPin', 'setPin', 'changePin'];
+
+function money(n) {
+  n = Number(n) || 0;
+  var s = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (n < 0 ? '-$' : '$') + s;
+}
+function groupOf(cat) { var i = cat.indexOf(':'); return i > 0 ? cat.slice(0, i) : 'General'; }
+function childOf(cat) { var i = cat.indexOf(':'); return i > 0 ? cat.slice(i + 1) : cat; }
+function ym(y, m) { return y + '-' + (m < 10 ? '0' + m : m); }
+function pctClass(spent, budget) {
+  if (!budget) return spent > 0 ? 'over' : 'ok';
+  var p = spent / budget;
+  return p >= 1 ? 'over' : p >= 0.8 ? 'near' : 'ok';
+}
+function showMsg(t) {
+  var el = document.getElementById('msg');
+  el.textContent = t; el.style.display = 'block';
+  setTimeout(function () { el.style.display = 'none'; }, 4000);
+}
+function token() { try { return sessionStorage.getItem('ft_token') || ''; } catch (e) { return ''; } }
+
+function server(fn, args) {
+  args = args || [];
+  return new Promise(function (resolve, reject) {
+    function fail(e) {
+      var m = (e && e.message) ? e.message : String(e);
+      if (m.indexOf('Not authorized') >= 0) { try { sessionStorage.removeItem('ft_token'); } catch (err) {} showGate(); }
+      reject(new Error(m));
+    }
+    if (window.__fakeRun) { window.__fakeRun(fn, args, resolve, fail); return; }
+    if (typeof google === 'undefined' || !google.script || !google.script.run) { reject(new Error('Open this page through the deployed web app link.')); return; }
+    var runner = google.script.run.withSuccessHandler(resolve).withFailureHandler(fail);
+    if (DIRECT.indexOf(fn) >= 0) { runner[fn].apply(runner, args); }
+    else { runner.authed(token(), fn, args); }
+  });
+}
+
+function load() {
+  return server('getState').then(function (st) {
+    S = st; renderAll();
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('pinGate').style.display = 'none';
+  });
+}
+
+/* ---------- PIN gate ---------- */
+function showGate() {
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('pinGate').style.display = 'flex';
+}
+function initPin() {
+  server('hasPinStatus').then(function (r) {
+    if (!r.hasPin) {
+      document.getElementById('pinTitle').textContent = 'Create a PIN';
+      document.getElementById('pinSub').textContent = 'First run: choose 4 to 6 digits. You and your wife will share it.';
+      document.getElementById('pinInput2').style.display = 'block';
+      document.getElementById('pinBtn').textContent = 'Set PIN';
+    }
+  }).catch(function (e) { showMsg(e.message); });
+}
+document.getElementById('pinBtn').addEventListener('click', function () {
+  var pin = document.getElementById('pinInput').value.trim();
+  var err = document.getElementById('pinErr');
+  err.textContent = '';
+  if (!/^\d{4,6}$/.test(pin)) { err.textContent = 'PIN must be 4 to 6 digits.'; return; }
+  var creating = document.getElementById('pinInput2').style.display !== 'none';
+  function unlock() {
+    server('checkPin', [pin]).then(function (r) {
+      if (!r.ok) { err.textContent = r.locked ? 'Too many tries. Wait 10 minutes.' : (r.error || 'Incorrect PIN.'); return; }
+      try { sessionStorage.setItem('ft_token', r.token); } catch (e) {}
+      load().catch(function (e) { err.textContent = e.message; });
+    }).catch(function (e) { err.textContent = e.message; });
+  }
+  if (creating) {
+    var pin2 = document.getElementById('pinInput2').value.trim();
+    if (pin !== pin2) { err.textContent = 'PINs do not match.'; return; }
+    server('setPin', [pin]).then(function () {
+      document.getElementById('pinInput2').style.display = 'none';
+      document.getElementById('pinBtn').textContent = 'Unlock';
+      document.getElementById('pinTitle').textContent = 'Enter your PIN';
+      unlock();
+    }).catch(function (e) { err.textContent = e.message; });
+  } else { unlock(); }
+});
+
+/* ---------- rendering ---------- */
+function monthTxs(y, m) {
+  var p = ym(y, m);
+  return S.transactions.filter(function (t) { return t.date.indexOf(p) === 0; });
+}
+function spentFor(cat, y, m) {
+  return monthTxs(y, m).filter(function (t) { return t.type === 'Expense' && t.category === cat; })
+    .reduce(function (a, t) { return a + t.amount; }, 0);
+}
+function incomeFor(cat, y, m) {
+  return monthTxs(y, m).filter(function (t) { return t.type === 'Income' && t.category === cat; })
+    .reduce(function (a, t) { return a + t.amount; }, 0);
+}
+function budgetFor(cat, y, m) {
+  var b = S.budgets.filter(function (x) { return x.year === y && x.month === m && x.category === cat; });
+  return b.length ? b[0].amount : 0;
+}
+function catType(name) {
+  var c = S.categories.filter(function (x) { return x.name === name; });
+  return c.length ? c[0].type : 'Expense';
+}
+
+function renderAll() {
+  var now = new Date();
+  if (!curY) { curY = now.getFullYear(); curM = now.getMonth() + 1; }
+  document.getElementById('monthPick').value = ym(curY, curM);
+  renderSummary(); renderBudgets(); renderYear(); fillSelects(); renderTx(); renderAccounts(); renderCats();
+}
+
+function renderSummary() {
+  var txs = monthTxs(curY, curM);
+  var inc = txs.filter(function (t) { return t.type === 'Income'; }).reduce(function (a, t) { return a + t.amount; }, 0);
+  var exp = txs.filter(function (t) { return t.type === 'Expense'; }).reduce(function (a, t) { return a + t.amount; }, 0);
+  var incB = S.budgets.filter(function (b) { return b.year === curY && b.month === curM && catType(b.category) === 'Income'; })
+    .reduce(function (a, b) { return a + b.amount; }, 0);
+  var expB = S.budgets.filter(function (b) { return b.year === curY && b.month === curM && catType(b.category) === 'Expense'; })
+    .reduce(function (a, b) { return a + b.amount; }, 0);
+  document.getElementById('sInc').textContent = money(inc);
+  document.getElementById('sIncSub').textContent = 'Expected ' + money(incB);
+  document.getElementById('sExp').textContent = money(exp);
+  document.getElementById('sExpSub').textContent = 'Budgeted ' + money(expB) + ' · ' + money(Math.max(expB - exp, 0)) + ' left';
+  document.getElementById('sLeft').textContent = money(incB - expB);
+  document.getElementById('sNet').textContent = money(inc - exp);
+}
+
+function budgetRow(cat, y, m, isIncome) {
+  var spent = isIncome ? incomeFor(cat, y, m) : spentFor(cat, y, m);
+  var bud = budgetFor(cat, y, m);
+  var rem = bud - spent;
+  var pct = bud ? Math.min(100, Math.round(spent / bud * 100)) : (spent > 0 ? 100 : 0);
+  var cls = pctClass(spent, bud);
+  return '<div class="card" data-cat="' + cat.replace(/"/g, '') + '">' +
+    '<div class="brow"><b>' + childOf(cat) + '</b><span class="amt">' + money(spent) + ' / ' + money(bud) + '</span></div>' +
+    '<div class="bar"><i class="' + cls + '" style="width:' + pct + '%"></i></div>' +
+    '<div class="row"><span class="small">' + (rem >= 0 ? money(rem) + (isIncome ? ' to receive' : ' left') : money(-rem) + ' over') +
+    '</span><span style="flex:1"></span>' +
+    '<button class="secondary" data-act="edit">Edit</button></div></div>';
+}
+
+function renderBudgets() {
+  var box = document.getElementById('budgetList');
+  var yv = document.getElementById('yearView');
+  if (viewMode === 'Y') { box.style.display = 'none'; yv.style.display = 'block'; return; }
+  box.style.display = 'block'; yv.style.display = 'none';
+  var groups = {};
+  S.categories.forEach(function (c) {
+    var spent = c.type === 'Income' ? incomeFor(c.name, curY, curM) : spentFor(c.name, curY, curM);
+    var bud = budgetFor(c.name, curY, curM);
+    if (spent === 0 && bud === 0) return;
+    var g = groupOf(c.name);
+    (groups[g] = groups[g] || []).push(c);
+  });
+  var html = '';
+  Object.keys(groups).sort().forEach(function (g) {
+    html += '<h3>' + g + '</h3>';
+    groups[g].forEach(function (c) { html += budgetRow(c.name, curY, curM, c.type === 'Income'); });
+  });
+  box.innerHTML = html || '<p class="small">No budgets or spending this month yet. Add a budget from Categories, or copy last month above.</p>';
+}
+
+function renderYear() {
+  var box = document.getElementById('yearView');
+  var inc = 0, incB = 0, exp = 0, expB = 0;
+  var rows = {};
+  S.categories.forEach(function (c) {
+    var a = 0, b = 0;
+    for (var m = 1; m <= 12; m++) {
+      a += c.type === 'Income' ? incomeFor(c.name, curY, m) : spentFor(c.name, curY, m);
+      b += budgetFor(c.name, curY, m);
+    }
+    if (a === 0 && b === 0) return;
+    if (c.type === 'Income') { inc += a; incB += b; } else { exp += a; expB += b; }
+    var g = groupOf(c.name);
+    (rows[g] = rows[g] || []).push({ name: childOf(c.name), a: a, b: b });
+  });
+  var html = '<div class="cards">' +
+    '<div class="stat"><div class="lbl">Income ' + curY + '</div><div class="val">' + money(inc) + '</div><div class="sub">Expected ' + money(incB) + '</div></div>' +
+    '<div class="stat"><div class="lbl">Spent ' + curY + '</div><div class="val">' + money(exp) + '</div><div class="sub">Budgeted ' + money(expB) + '</div></div>' +
+    '<div class="stat"><div class="lbl">Net ' + curY + '</div><div class="val">' + money(inc - exp) + '</div><div class="sub">Left to budget ' + money(incB - expB) + '</div></div></div>';
+  Object.keys(rows).sort().forEach(function (g) {
+    html += '<h3>' + g + '</h3>';
+    rows[g].forEach(function (r) {
+      html += '<div class="card"><div class="brow"><b>' + r.name + '</b><span class="amt">' + money(r.a) + ' / ' + money(r.b) + '</span></div></div>';
+    });
+  });
+  box.innerHTML = html;
+}
+
+/* Budget row actions: edit amount, apply to all months / rest of year. */
+document.getElementById('budgetList').addEventListener('click', function (e) {
+  var btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  var card = e.target.closest('.card[data-cat]');
+  var cat = card.getAttribute('data-cat');
+  if (btn.getAttribute('data-act') === 'edit') {
+    var cur = budgetFor(cat, curY, curM);
+    card.innerHTML = '<div class="brow"><b>' + childOf(cat) + '</b></div>' +
+      '<div class="row" style="margin-top:8px"><div class="field"><label>Monthly amount</label>' +
+      '<input type="number" step="0.01" id="editAmt" value="' + cur + '"></div></div>' +
+      '<div class="row" style="margin-top:8px">' +
+      '<button data-act="save">Save</button>' +
+      '<button class="secondary" data-act="all">Apply to all 12 months</button>' +
+      '<button class="secondary" data-act="rest">Apply through December</button>' +
+      '<button class="secondary" data-act="cancel">Cancel</button></div>';
+    return;
+  }
+  if (btn.getAttribute('data-act') === 'cancel') { renderBudgets(); return; }
+  var amt = Number(document.getElementById('editAmt').value) || 0;
+  if (btn.getAttribute('data-act') === 'save') {
+    server('setBudget', [curY, curM, cat, amt]).then(function () { showMsg('Budget saved.'); return load(); }).catch(function (er) { showMsg(er.message); });
+  } else if (btn.getAttribute('data-act') === 'all') {
+    server('applyBudgetAmount', [cat, curY, 1, 'all', amt]).then(function (n) { showMsg('Applied to ' + n + ' months.'); return load(); }).catch(function (er) { showMsg(er.message); });
+  } else if (btn.getAttribute('data-act') === 'rest') {
+    server('applyBudgetAmount', [cat, curY, curM, 'rest', amt]).then(function (n) { showMsg('Applied to ' + n + ' months.'); return load(); }).catch(function (er) { showMsg(er.message); });
+  }
+});
+
+document.getElementById('copyPrev').addEventListener('click', function () {
+  server('copyPrevMonth', [curY, curM]).then(function (n) {
+    showMsg(n ? 'Copied ' + n + ' budget lines from last month.' : 'Last month had no budgets to copy.');
+    return load();
+  }).catch(function (e) { showMsg(e.message); });
+});
+document.getElementById('viewM').addEventListener('click', function () { viewMode = 'M'; renderBudgets(); });
+document.getElementById('viewY').addEventListener('click', function () { viewMode = 'Y'; renderBudgets(); renderYear(); });
+</script>
+<script>
+/* ---------- nav, month, dark mode ---------- */
+document.getElementById('tabs').addEventListener('click', function (e) {
+  var b = e.target.closest('button[data-sec]');
+  if (!b) return;
+  document.querySelectorAll('#tabs button').forEach(function (x) { x.classList.remove('on'); });
+  b.classList.add('on');
+  ['budgets', 'tx', 'import', 'accounts', 'cats', 'settings'].forEach(function (s) {
+    document.getElementById('sec-' + s).style.display = (s === b.getAttribute('data-sec')) ? 'block' : 'none';
+  });
+});
+function shiftMonth(d) {
+  curM += d;
+  if (curM < 1) { curM = 12; curY--; }
+  if (curM > 12) { curM = 1; curY++; }
+  renderAll();
+}
+document.getElementById('prevM').addEventListener('click', function () { shiftMonth(-1); });
+document.getElementById('nextM').addEventListener('click', function () { shiftMonth(1); });
+document.getElementById('monthPick').addEventListener('change', function (e) {
+  var v = e.target.value;
+  if (/^\d{4}-\d{2}$/.test(v)) { curY = Number(v.slice(0, 4)); curM = Number(v.slice(5, 7)); renderAll(); }
+});
+function applyDark(on) {
+  document.body.classList.toggle('dark', on);
+  document.getElementById('darkBtn').textContent = on ? '☀️ Light' : '🌙 Dark';
+  try { localStorage.setItem('ft_dark', on ? '1' : '0'); } catch (e) {}
+}
+document.getElementById('darkBtn').addEventListener('click', function () {
+  applyDark(!document.body.classList.contains('dark'));
+});
+
+/* ---------- selects ---------- */
+function optList(el, items, keepFirst) {
+  var cur = el.value;
+  el.innerHTML = '';
+  if (keepFirst) { var o = document.createElement('option'); o.textContent = keepFirst; o.value = ''; el.appendChild(o); }
+  items.forEach(function (it) { var op = document.createElement('option'); op.value = it; op.textContent = it; el.appendChild(op); });
+  if (cur) el.value = cur;
+}
+function fillSelects() {
+  var accs = S.accounts.map(function (a) { return a.name; });
+  var cats = S.categories.map(function (c) { return c.name; }).sort();
+  var typeCats = S.categories.filter(function (c) { return c.type === document.getElementById('txType').value; }).map(function (c) { return c.name; }).sort();
+  optList(document.getElementById('txAccount'), accs);
+  optList(document.getElementById('impAccount'), accs);
+  optList(document.getElementById('txCat'), typeCats);
+  optList(document.getElementById('fAccount'), accs, 'All accounts');
+  optList(document.getElementById('fCat'), cats, 'All categories');
+  optList(document.getElementById('impCat'), cats);
+  var imp = document.getElementById('impCat');
+  if (cats.indexOf('Uncategorized') >= 0) imp.value = 'Uncategorized';
+}
+
+/* ---------- transactions ---------- */
+function resetTxForm() {
+  editingTxId = null;
+  document.getElementById('txFormTitle').textContent = 'Add transaction';
+  document.getElementById('txSave').textContent = 'Add transaction';
+  document.getElementById('txCancel').style.display = 'none';
+  document.getElementById('txDelete').style.display = 'none';
+  document.getElementById('txDate').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('txAmt').value = '';
+  document.getElementById('txNote').value = '';
+  fillSelects();
+}
+document.getElementById('txType').addEventListener('change', fillSelects);
+document.getElementById('txCancel').addEventListener('click', resetTxForm);
+document.getElementById('txSave').addEventListener('click', function () {
+  var t = {
+    date: document.getElementById('txDate').value,
+    account: document.getElementById('txAccount').value,
+    type: document.getElementById('txType').value,
+    category: document.getElementById('txCat').value,
+    amount: Number(document.getElementById('txAmt').value),
+    note: document.getElementById('txNote').value.trim()
+  };
+  if (!t.date || !t.account || !t.category || !(t.amount > 0)) { showMsg('Fill in date, account, category, and an amount over zero.'); return; }
+  var p = editingTxId ? server('updateTransaction', [editingTxId, t]) : server('addTransaction', [t]);
+  p.then(function () { showMsg(editingTxId ? 'Transaction updated.' : 'Transaction added.'); resetTxForm(); return load(); })
+   .catch(function (e) { showMsg(e.message); });
+});
+document.getElementById('txDelete').addEventListener('click', function () {
+  if (!editingTxId || !confirm('Delete this transaction?')) return;
+  server('deleteTransaction', [editingTxId]).then(function () { showMsg('Transaction deleted.'); resetTxForm(); return load(); })
+    .catch(function (e) { showMsg(e.message); });
+});
+function renderTx() {
+  var fa = document.getElementById('fAccount').value;
+  var fc = document.getElementById('fCat').value;
+  var q = (document.getElementById('fSearch').value || '').toLowerCase();
+  var p = ym(curY, curM);
+  var list = S.transactions.filter(function (t) {
+    if (t.date.indexOf(p) !== 0) return false;
+    if (fa && t.account !== fa) return false;
+    if (fc && t.category !== fc) return false;
+    if (q && (t.note + ' ' + t.category).toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  });
+  document.getElementById('txList').innerHTML = list.length ? list.map(function (t) {
+    return '<div class="txrow" data-id="' + t.id + '"><div><b>' + t.category + '</b><div class="meta">' +
+      t.date + ' · ' + t.account + (t.note ? ' · ' + t.note : '') + '</div></div>' +
+      '<div class="' + (t.type === 'Income' ? 'pos' : 'neg') + '">' + (t.type === 'Income' ? '+' : '−') + money(t.amount) + '</div></div>';
+  }).join('') : '<p class="small">No transactions match this month and these filters.</p>';
+}
+document.getElementById('txList').addEventListener('click', function (e) {
+  var row = e.target.closest('.txrow[data-id]');
+  if (!row) return;
+  var t = S.transactions.filter(function (x) { return x.id === row.getAttribute('data-id'); })[0];
+  if (!t) return;
+  editingTxId = t.id;
+  document.getElementById('txType').value = t.type;
+  fillSelects();
+  document.getElementById('txDate').value = t.date;
+  document.getElementById('txAccount').value = t.account;
+  document.getElementById('txCat').value = t.category;
+  document.getElementById('txAmt').value = t.amount;
+  document.getElementById('txNote').value = t.note;
+  document.getElementById('txFormTitle').textContent = 'Edit transaction';
+  document.getElementById('txSave').textContent = 'Save changes';
+  document.getElementById('txCancel').style.display = 'inline-block';
+  document.getElementById('txDelete').style.display = 'inline-block';
+  document.getElementById('sec-tx').scrollIntoView();
+});
+['fAccount', 'fCat'].forEach(function (id) { document.getElementById(id).addEventListener('change', renderTx); });
+document.getElementById('fSearch').addEventListener('input', renderTx);
+
+/* ---------- CSV import ---------- */
+function parseCSV(text) {
+  var rows = [], row = [], cur = '', inQ = false;
+  for (var i = 0; i < text.length; i++) {
+    var ch = text[i];
+    if (inQ) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { cur += '"'; i++; } else { inQ = false; }
+      } else { cur += ch; }
+    } else if (ch === '"') { inQ = true; }
+    else if (ch === ',') { row.push(cur); cur = ''; }
+    else if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+    else if (ch !== '\r') { cur += ch; }
+  }
+  if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+  rows = rows.filter(function (r) { return r.some(function (c) { return c.trim() !== ''; }); });
+  if (!rows.length) return { headers: [], rows: [] };
+  return { headers: rows[0].map(function (h) { return h.trim(); }), rows: rows.slice(1) };
+}
+function normalizeDate(s) {
+  s = (s || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  var m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (m) {
+    var y = Number(m[3]); if (y < 100) y += 2000;
+    return y + '-' + ('0' + m[1]).slice(-2) + '-' + ('0' + m[2]).slice(-2);
+  }
+  return '';
+}
+function parseAmount(s) {
+  s = (s || '').trim().replace(/[$,\s]/g, '');
+  if (!s) return null;
+  var neg = false;
+  if (s[0] === '(' && s[s.length - 1] === ')') { neg = true; s = s.slice(1, -1); }
+  if (s[s.length - 1] === '-') { neg = true; s = s.slice(0, -1); }
+  var n = parseFloat(s);
+  if (isNaN(n)) return null;
+  return neg ? -Math.abs(n) : n;
+}
+function guessCol(headers, re, fallback) {
+  for (var i = 0; i < headers.length; i++) if (re.test(headers[i].toLowerCase())) return i;
+  return Math.min(fallback, headers.length - 1);
+}
+function mapSelect(el, headers, idx) {
+  el.innerHTML = '';
+  headers.forEach(function (h, i) { var o = document.createElement('option'); o.value = i; o.textContent = h || ('Column ' + (i + 1)); el.appendChild(o); });
+  el.value = idx;
+}
+document.getElementById('csvFile').addEventListener('change', function (e) {
+  var f = e.target.files[0];
+  if (!f) return;
+  var rd = new FileReader();
+  rd.onload = function () {
+    csvParsed = parseCSV(rd.result);
+    if (!csvParsed.headers.length) { showMsg('Could not read that CSV.'); return; }
+    mapSelect(document.getElementById('mapDate'), csvParsed.headers, guessCol(csvParsed.headers, /date|day/, 0));
+    mapSelect(document.getElementById('mapDesc'), csvParsed.headers, guessCol(csvParsed.headers, /desc|memo|payee|name|detail/, 1));
+    mapSelect(document.getElementById('mapAmt'), csvParsed.headers, guessCol(csvParsed.headers, /amount|total|sum|debit|credit/, 2));
+    renderImpPreview();
+    document.getElementById('impBtn').disabled = false;
+  };
+  rd.readAsText(f);
+});
+function mappedRows() {
+  if (!csvParsed) return [];
+  var di = Number(document.getElementById('mapDate').value);
+  var de = Number(document.getElementById('mapDesc').value);
+  var ai = Number(document.getElementById('mapAmt').value);
+  var flip = document.getElementById('impFlip').checked;
+  var account = document.getElementById('impAccount').value;
+  var cat = document.getElementById('impCat').value;
+  return csvParsed.rows.map(function (r) {
+    var amt = parseAmount(r[ai]);
+    if (amt === null) amt = 0;
+    if (flip) amt = -amt;
+    return {
+      date: normalizeDate(r[di]), account: account, category: cat,
+      type: amt < 0 ? 'Expense' : 'Income', amount: Math.abs(amt), note: (r[de] || '').trim(),
+      ok: !!normalizeDate(r[di]) && amt !== 0
+    };
+  });
+}
+function renderImpPreview() {
+  var rows = mappedRows();
+  var good = rows.filter(function (r) { return r.ok; });
+  var html = '<p class="small">' + rows.length + ' rows found · ' + good.length + ' ready to import · ' +
+    (rows.length - good.length) + ' skipped (bad date or zero amount).</p>';
+  html += good.slice(0, 8).map(function (r) {
+    return '<div class="txrow"><div><b>' + r.category + '</b><div class="meta">' + r.date + ' · ' + r.note + '</div></div>' +
+      '<div class="' + (r.type === 'Income' ? 'pos' : 'neg') + '">' + (r.type === 'Income' ? '+' : '−') + money(r.amount) + '</div></div>';
+  }).join('');
+  document.getElementById('impPreview').innerHTML = html;
+}
+['mapDate', 'mapDesc', 'mapAmt', 'impFlip', 'impAccount', 'impCat'].forEach(function (id) {
+  document.getElementById(id).addEventListener('change', function () { if (csvParsed) renderImpPreview(); });
+});
+document.getElementById('impBtn').addEventListener('click', function () {
+  var rows = mappedRows().filter(function (r) { return r.ok; });
+  if (!rows.length) { showMsg('Nothing valid to import.'); return; }
+  server('importTransactions', [rows]).then(function (r) {
+    showMsg('Imported ' + r.added + ' · skipped ' + r.skipped + ' duplicates.');
+    document.getElementById('impMsg').textContent = 'Imported ' + r.added + ', skipped ' + r.skipped + '.';
+    return load();
+  }).catch(function (e) { showMsg(e.message); });
+});
+
+/* ---------- accounts ---------- */
+document.getElementById('acAdd').addEventListener('click', function () {
+  var name = document.getElementById('acName').value.trim();
+  var start = Number(document.getElementById('acStart').value) || 0;
+  if (!name) { showMsg('Account name is required.'); return; }
+  server('addAccount', [name, start]).then(function () {
+    document.getElementById('acName').value = ''; document.getElementById('acStart').value = '';
+    showMsg('Account added.'); return load();
+  }).catch(function (e) { showMsg(e.message); });
+});
+function renderAccounts() {
+  var total = S.accounts.reduce(function (a, x) { return a + x.current; }, 0);
+  document.getElementById('acList').innerHTML =
+    '<div class="card"><div class="brow"><b>Total across accounts</b><span class="amt">' + money(total) + '</span></div></div>' +
+    S.accounts.map(function (a) {
+      return '<div class="card"><div class="brow"><b>' + a.name + '</b><span class="amt">' + money(a.current) + '</span></div>' +
+        '<div class="small">Started at ' + money(a.starting) + '</div>' +
+        '<div class="row" style="margin-top:8px"><button class="secondary" data-ac-del="' + a.name.replace(/"/g, '') + '">Delete</button></div></div>';
+    }).join('');
+}
+document.getElementById('acList').addEventListener('click', function (e) {
+  var name = e.target.getAttribute('data-ac-del');
+  if (!name || !confirm('Delete account "' + name + '"?')) return;
+  server('deleteAccount', [name]).then(function () { showMsg('Account deleted.'); return load(); })
+    .catch(function (er) { showMsg(er.message); });
+});
+
+/* ---------- categories ---------- */
+function resetCatForm() {
+  editingCat = null;
+  document.getElementById('catFormTitle').textContent = 'Add category';
+  document.getElementById('catSave').textContent = 'Add category';
+  document.getElementById('catCancel').style.display = 'none';
+  document.getElementById('catName').value = '';
+}
+document.getElementById('catCancel').addEventListener('click', resetCatForm);
+document.getElementById('catSave').addEventListener('click', function () {
+  var name = document.getElementById('catName').value.trim();
+  var type = document.getElementById('catType').value;
+  if (!name) { showMsg('Category name is required.'); return; }
+  var p = editingCat
+    ? server('renameCategory', [editingCat, name, type])
+    : server('addCategory', [name, type]);
+  p.then(function () { showMsg(editingCat ? 'Category renamed everywhere.' : 'Category added.'); resetCatForm(); return load(); })
+   .catch(function (e) { showMsg(e.message); });
+});
+function renderCats() {
+  var html = '';
+  ['Income', 'Expense'].forEach(function (type) {
+    html += '<h3>' + type + '</h3>';
+    S.categories.filter(function (c) { return c.type === type; }).sort(function (a, b) { return a.name < b.name ? -1 : 1; }).forEach(function (c) {
+      html += '<div class="card"><div class="row"><b style="flex:1">' + c.name + '</b>' +
+        '<button class="secondary" data-cat-edit="' + c.name.replace(/"/g, '') + '">Edit</button>' +
+        '<button class="secondary" data-cat-del="' + c.name.replace(/"/g, '') + '">Delete</button></div></div>';
+    });
+  });
+  document.getElementById('catList').innerHTML = html;
+}
+document.getElementById('catList').addEventListener('click', function (e) {
+  var ed = e.target.getAttribute('data-cat-edit');
+  var del = e.target.getAttribute('data-cat-del');
+  if (ed) {
+    editingCat = ed;
+    document.getElementById('catName').value = ed;
+    document.getElementById('catType').value = catType(ed);
+    document.getElementById('catFormTitle').textContent = 'Edit category';
+    document.getElementById('catSave').textContent = 'Save changes';
+    document.getElementById('catCancel').style.display = 'inline-block';
+    document.getElementById('sec-cats').scrollIntoView();
+  } else if (del) {
+    if (!confirm('Delete category "' + del + '"?')) return;
+    server('deleteCategory', [del]).then(function () { showMsg('Category deleted.'); return load(); })
+      .catch(function (er) { showMsg(er.message); });
+  }
+});
+
+/* ---------- settings ---------- */
+document.getElementById('pinChange').addEventListener('click', function () {
+  var oldP = document.getElementById('pinOld').value.trim();
+  var nw = document.getElementById('pinNew').value.trim();
+  var nw2 = document.getElementById('pinNew2').value.trim();
+  if (!/^\d{4,6}$/.test(nw)) { showMsg('New PIN must be 4 to 6 digits.'); return; }
+  if (nw !== nw2) { showMsg('New PINs do not match.'); return; }
+  server('changePin', [oldP, nw]).then(function () {
+    showMsg('PIN changed. Use the new PIN next time you open the app.');
+    document.getElementById('pinOld').value = ''; document.getElementById('pinNew').value = ''; document.getElementById('pinNew2').value = '';
+  }).catch(function (e) { showMsg(e.message); });
+});
+
+/* ---------- init ---------- */
+(function init() {
+  var dark = false;
+  try { dark = localStorage.getItem('ft_dark') === '1'; } catch (e) {}
+  if (localStorage.getItem('ft_dark') === null && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) dark = true;
+  applyDark(dark);
+  var now = new Date();
+  curY = now.getFullYear(); curM = now.getMonth() + 1;
+  document.getElementById('txDate').value = now.toISOString().slice(0, 10);
+  if (token()) {
+    load().catch(function () { initPin(); });
+  } else {
+    initPin();
+  }
+})();
+
+window.__test = { parseCSV: parseCSV, money: money, groupOf: groupOf, normalizeDate: normalizeDate, parseAmount: parseAmount, pctClass: pctClass };
+</script>
+</body>
+</html>
